@@ -20,6 +20,8 @@
 
 #include <nopticon.hh>
 
+#define MILLISECONDS_PER_SECOND 1000
+
 typedef std::unordered_map<std::string, nopticon::nid_t> string_to_nid_t;
 typedef std::vector<std::string> nid_to_name_t;
 
@@ -425,8 +427,17 @@ void process_cmd(nopticon::analysis_t &analysis, log_t &log,
     break;
   case cmd_t::REFRESH_NETWORK_SUMMARY:
     assert(document["Command"].HasMember("Timestamp"));
-    assert(document["Command"]["Timestamp"].IsUint());
-    timestamp = document["Command"]["Timestamp"].GetUint();
+    if (document["Command"]["Timestamp"].IsUint()) {
+        // Convert time in seconds to time in milliseconds
+        timestamp = document["Command"]["Timestamp"].GetUint() 
+            * MILLISECONDS_PER_SECOND;
+    } else {
+        // Convert time in seconds and nanoseconds to time in milliseconds
+        assert(document["Command"]["Timestamp"].IsDouble());
+        timestamp = static_cast<nopticon::timestamp_t>(
+                document["Command"]["Timestamp"].GetDouble()
+                * MILLISECONDS_PER_SECOND);
+    }
     analysis.refresh_reach_summary(timestamp);
     break;
   default:
@@ -476,11 +487,13 @@ void process_bmp_message(std::size_t number_of_nodes, FILE *file,
     auto peer_bgpid = peer_header["PeerBGPID"].GetString();
     nopticon::timestamp_t timestamp;
     if (peer_header["Timestamp"].IsUint()) {
-      timestamp = peer_header["Timestamp"].GetUint();
+      // Convert time in seconds and to time in milliseconds
+      timestamp = peer_header["Timestamp"].GetUint() * MILLISECONDS_PER_SECOND;
     } else {
+      // Convert time in seconds and nanoseconds to time in milliseconds
       assert(peer_header["Timestamp"].IsDouble());
       timestamp = static_cast<nopticon::timestamp_t>(
-          peer_header["Timestamp"].GetDouble());
+          peer_header["Timestamp"].GetDouble() * MILLISECONDS_PER_SECOND);
     }
     auto &body = document["Body"];
     auto &bgp_update = body["BGPUpdate"];
@@ -622,7 +635,7 @@ int main(int argc, char **args) {
       std::stringstream sstream{args[i + 1]};
       nopticon::duration_t span;
       while (sstream >> span) {
-        opt_reach_summary_spans.push_back(span);
+        opt_reach_summary_spans.push_back(span * MILLISECONDS_PER_SECOND);
         if (sstream.peek() == ',') {
           sstream.ignore();
         }
